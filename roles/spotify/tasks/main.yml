@@ -1,0 +1,55 @@
+---
+- name: install spotify
+  homebrew_cask: name=spotify state=present
+
+- name: ensure the spotify global settings directories exist
+  file: path="~/Library/Application Support/Spotify" state=directory
+
+- name: check if global spotify prefs file exists
+  stat: path='~/Library/Application Support/Spotify/prefs'
+  register: global_spotify_prefs_check
+
+- name: create the global spotify prefs file if required
+  file: path='~/Library/Application Support/Spotify/prefs' state=touch mode=0644
+  when: not global_spotify_prefs_check.stat.exists
+
+- name: ensure the spotify user settings directories exist
+  file: path="~/Library/Application Support/Spotify/Users/{{ spotify_username }}-user" state=directory
+
+- name: check if user spotify prefs file exists
+  stat: path="~/Library/Application Support/Spotify/Users/{{ spotify_username }}-user/prefs"
+  register: user_spotify_prefs_check
+
+- name: create the user spotify prefs file if required
+  file:
+    path: "~/Library/Application Support/Spotify/Users/{{ spotify_username }}-user/prefs"
+    state: touch
+    mode: 0644
+  when: not user_spotify_prefs_check.stat.exists
+
+- name: set global setting
+  lineinfile:
+    dest: ~/Library/Application Support/Spotify/prefs
+    regexp: "^{{ item.key | regex_escape() }}="
+    line: "{{ item.key }}={{ item.value | spotify_value }}"
+  with_dict: "{{ spotify_global_settings }}"
+
+- name: set user setting
+  lineinfile:
+    dest: "~/Library/Application Support/Spotify/Users/{{ spotify_username }}-user/prefs"
+    regexp: "^{{ item.key | regex_escape() }}="
+    line: "{{ item.key }}={{ item.value | spotify_value }}"
+  with_dict: "{{ spotify_user_settings }}"
+
+- name: check if Spotify is in login items
+  command: osascript -l JavaScript
+           -e "Application('System Events').loginItems.byName('Spotify').name()"
+  changed_when: false
+  ignore_errors: yes
+  failed_when: no
+  register: spotify_login_check
+
+- name: remove Spotify from login items
+  command: osascript -l JavaScript
+           -e "Application('System Events').loginItems.byName('Spotify').delete()"
+  when: spotify_login_check.rc == 0
